@@ -1,6 +1,11 @@
--- Fix: "aggregate function calls cannot contain window function calls"
--- The START_GAME branch inlined ROW_NUMBER() OVER (...) inside jsonb_agg(...).
--- Postgres forbids this. Compute row numbers in a subquery, then aggregate.
+-- Authoritative replacement for handle_action(). Combines:
+--   1. Lower minimum player count from 5 to 3.
+--   2. Fix "aggregate function calls cannot contain window function calls"
+--      by moving ROW_NUMBER() into a subquery before jsonb_agg() reads it.
+--   3. Fix broken seating randomization: the previous correlated-subquery
+--      UPDATE always returned ROW_NUMBER() = 1, so every player got
+--      order_index = 0. Replaced with a CTE-driven UPDATE so each player
+--      gets a unique random rank.
 
 CREATE OR REPLACE FUNCTION handle_action(
   p_room_id UUID,
@@ -35,7 +40,7 @@ BEGIN
   END IF;
 
   v_action_type := p_action->>'type';
-  v_payload := p_action->'payload';
+  v_payload     := p_action->'payload';
 
   -- ============ START_GAME ============
   IF v_action_type = 'START_GAME' THEN
@@ -43,7 +48,8 @@ BEGIN
       RETURN jsonb_build_object('error', 'Only host can start game');
     END IF;
 
-    SELECT COUNT(*) INTO v_player_count FROM room_players WHERE room_id = p_room_id;
+    SELECT COUNT(*) INTO v_player_count
+    FROM room_players WHERE room_id = p_room_id;
 
     IF v_player_count < 3 THEN
       RETURN jsonb_build_object('error', 'Need at least 3 players');
@@ -53,27 +59,30 @@ BEGIN
       RETURN jsonb_build_object('error', 'Game already started');
     END IF;
 
-    -- Randomize seating order.
-    UPDATE room_players
-    SET order_index = (
-      SELECT row_number() OVER (ORDER BY RANDOM()) - 1
-      FROM room_players rp2 WHERE rp2.id = room_players.id
+    -- Assign a unique random seating rank to every player in one statement.
+    WITH shuffled AS (
+      SELECT id, ROW_NUMBER() OVER (ORDER BY RANDOM()) - 1 AS new_idx
+      FROM room_players
+      WHERE room_id = p_room_id
     )
-    WHERE room_id = p_room_id;
+    UPDATE room_players rp
+    SET order_index = shuffled.new_idx
+    FROM shuffled
+    WHERE rp.id = shuffled.id;
 
-    -- Build players[] with role/word assigned by rank.
-    -- Window function runs in the inner subquery; the outer aggregate just reads `rn`.
+    -- Build players[] from a subquery that already has the rank column,
+    -- so jsonb_agg never sees a window call.
     v_new_state := jsonb_build_object(
       'round', 1,
       'category', 'Animal',
       'players', (
         SELECT jsonb_agg(
           jsonb_build_object(
-            'id', t.id::TEXT,
-            'name', t.name,
-            'role', CASE WHEN t.rn = 1 THEN 'mr_white' ELSE 'civilian' END,
+            'id',    t.id::TEXT,
+            'name',  t.name,
+            'role',  CASE WHEN t.rn = 1 THEN 'mr_white' ELSE 'civilian' END,
             'alive', TRUE,
-            'word', CASE WHEN t.rn = 1 THEN NULL ELSE 'elephant' END
+            'word',  CASE WHEN t.rn = 1 THEN NULL ELSE 'elephant' END
           )
           ORDER BY t.rn
         )
@@ -89,15 +98,15 @@ BEGIN
     );
 
     UPDATE rooms SET
-      status = 'playing',
-      phase = 'hinting',
-      game_state = v_new_state,
+      status                 = 'playing',
+      phase                  = 'hinting',
+      game_state             = v_new_state,
       current_turn_player_id = (
         SELECT id FROM room_players
         WHERE room_id = p_room_id
         ORDER BY order_index LIMIT 1
       ),
-      version = version + 1
+      version                = version + 1
     WHERE id = p_room_id;
 
     RETURN jsonb_build_object('success', TRUE, 'message', 'Game started');
@@ -119,22 +128,23 @@ BEGIN
     v_new_state := v_room.game_state || jsonb_build_object(
       'hints', COALESCE(v_room.game_state->'hints', '[]'::jsonb) ||
         jsonb_build_array(jsonb_build_object(
-          'player_id', p_player_id::TEXT,
+          'player_id',   p_player_id::TEXT,
           'player_name', v_player.name,
-          'hint', v_payload->>'hint',
-          'timestamp', TO_CHAR(NOW(), 'YYYY-MM-DD HH24:MI:SS')
+          'hint',        v_payload->>'hint',
+          'timestamp',   TO_CHAR(NOW(), 'YYYY-MM-DD HH24:MI:SS')
         ))
     );
 
     UPDATE rooms SET
-      game_state = v_new_state,
+      game_state             = v_new_state,
       current_turn_player_id = (
         SELECT id FROM room_players
-        WHERE room_id = p_room_id AND order_index = (
-          (SELECT order_index FROM room_players WHERE id = p_player_id) + 1
-        ) % (SELECT COUNT(*) FROM room_players WHERE room_id = p_room_id)
+        WHERE room_id = p_room_id
+          AND order_index = (
+            (SELECT order_index FROM room_players WHERE id = p_player_id) + 1
+          ) % (SELECT COUNT(*) FROM room_players WHERE room_id = p_room_id)
       ),
-      version = version + 1
+      version                = version + 1
     WHERE id = p_room_id;
 
     RETURN jsonb_build_object('success', TRUE, 'message', 'Hint submitted');
@@ -152,16 +162,16 @@ BEGIN
     v_new_state := v_room.game_state || jsonb_build_object(
       'votes', COALESCE(v_room.game_state->'votes', '[]'::jsonb) ||
         jsonb_build_array(jsonb_build_object(
-          'voter_id', p_player_id::TEXT,
-          'voter_name', v_player.name,
+          'voter_id',     p_player_id::TEXT,
+          'voter_name',   v_player.name,
           'voted_for_id', (v_payload->>'voted_for_id')::TEXT,
-          'timestamp', TO_CHAR(NOW(), 'YYYY-MM-DD HH24:MI:SS')
+          'timestamp',    TO_CHAR(NOW(), 'YYYY-MM-DD HH24:MI:SS')
         ))
     );
 
     UPDATE rooms SET
       game_state = v_new_state,
-      version = version + 1
+      version    = version + 1
     WHERE id = p_room_id;
 
     RETURN jsonb_build_object('success', TRUE, 'message', 'Vote recorded');
