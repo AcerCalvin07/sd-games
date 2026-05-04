@@ -9,13 +9,6 @@ export type GamePhase =
 export type PlayerRole = 'civilian' | 'mr_white';
 export type RoomStatus = 'waiting' | 'playing' | 'finished';
 
-export interface Hint {
-  player_id: string;
-  player_name: string;
-  hint: string;
-  timestamp: string;
-}
-
 export interface Vote {
   voter_id: string;
   voter_name: string;
@@ -35,7 +28,7 @@ export interface GameState {
   round: number;
   category: string;
   players: GamePlayer[];
-  hints: Hint[];
+  turns_taken?: string[];
   votes: Vote[];
   winner?: 'civilians' | 'mr_white';
   eliminated?: { round: number; player_id: string; player_name: string }[];
@@ -51,6 +44,10 @@ export interface Room {
   game_state: GameState;
   version: number;
   created_at: string;
+  max_players: number;
+  hint_timer_seconds: number;
+  vote_timer_seconds: number;
+  phase_started_at: string | null;
 }
 
 export interface RoomPlayer {
@@ -64,9 +61,15 @@ export interface RoomPlayer {
   last_seen_at: string;
 }
 
+export interface RoomSettings {
+  maxPlayers: number;
+  hintTimerSeconds: number;
+  voteTimerSeconds: number;
+}
+
 export type ActionPayload =
   | { type: 'START_GAME' }
-  | { type: 'SUBMIT_HINT'; payload: { hint: string } }
+  | { type: 'END_TURN' }
   | { type: 'VOTE'; payload: { voted_for_id: string } }
   | { type: 'RECONNECT' };
 

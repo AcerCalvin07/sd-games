@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { executeAction } from '@/services/gameService';
 import type { GamePlayer, Vote } from '@/types/game';
-import { VOTE_TIMER_SECONDS } from '@/utils/constants';
 
 interface Props {
   roomId: string;
@@ -12,22 +11,40 @@ interface Props {
   players: GamePlayer[];
   votes: Vote[];
   isAlive: boolean;
+  voteTimerSeconds: number;
+  phaseStartedAt: string | null;
 }
 
-export function VotingUI({ roomId, playerId, version, players, votes, isAlive }: Props) {
-  const [secondsLeft, setSecondsLeft] = useState(VOTE_TIMER_SECONDS);
+function computeRemaining(total: number, startedAt: string | null): number {
+  if (!startedAt) return total;
+  const elapsed = (Date.now() - new Date(startedAt).getTime()) / 1000;
+  return Math.max(0, Math.ceil(total - elapsed));
+}
+
+export function VotingUI({
+  roomId,
+  playerId,
+  version,
+  players,
+  votes,
+  isAlive,
+  voteTimerSeconds,
+  phaseStartedAt,
+}: Props) {
+  const [secondsLeft, setSecondsLeft] = useState(() =>
+    computeRemaining(voteTimerSeconds, phaseStartedAt),
+  );
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState<string | null>(null);
 
   useEffect(() => {
-    setSecondsLeft(VOTE_TIMER_SECONDS);
-  }, [version]);
-
-  useEffect(() => {
-    const tick = setInterval(() => setSecondsLeft((s) => Math.max(0, s - 1)), 1000);
+    setSecondsLeft(computeRemaining(voteTimerSeconds, phaseStartedAt));
+    const tick = setInterval(() => {
+      setSecondsLeft(computeRemaining(voteTimerSeconds, phaseStartedAt));
+    }, 1000);
     return () => clearInterval(tick);
-  }, []);
+  }, [voteTimerSeconds, phaseStartedAt]);
 
   const myVote = useMemo(
     () => votes.find((v) => v.voter_id === playerId)?.voted_for_id ?? null,
@@ -66,7 +83,7 @@ export function VotingUI({ roomId, playerId, version, players, votes, isAlive }:
         <h2 className="text-lg font-bold">Voting Phase</h2>
         <span
           className={`font-mono text-base ${
-            secondsLeft <= 5 ? 'text-red-600' : 'text-zinc-500'
+            secondsLeft <= 10 ? 'text-red-600' : 'text-zinc-500'
           }`}
         >
           {secondsLeft}s

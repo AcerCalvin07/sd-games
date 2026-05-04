@@ -7,7 +7,7 @@ interface DerivedState {
   round: number;
   category: string;
   players: GamePlayer[];
-  hints: GameState['hints'];
+  turnsTaken: string[];
   votes: GameState['votes'];
   phase: Room['phase'];
   aliveCount: number;
@@ -19,7 +19,7 @@ const EMPTY: GameState = {
   round: 0,
   category: '',
   players: [],
-  hints: [],
+  turns_taken: [],
   votes: [],
 };
 
@@ -30,7 +30,7 @@ export function useGameState(room: Room | null, currentPlayerId: string | null):
         round: 0,
         category: '',
         players: [],
-        hints: [],
+        turnsTaken: [],
         votes: [],
         phase: 'waiting',
         aliveCount: 0,
@@ -51,7 +51,7 @@ export function useGameState(room: Room | null, currentPlayerId: string | null):
       round: state.round ?? 0,
       category: state.category ?? '',
       players,
-      hints: state.hints ?? [],
+      turnsTaken: state.turns_taken ?? [],
       votes: state.votes ?? [],
       phase: room.phase,
       aliveCount: players.filter((p) => p.alive).length,

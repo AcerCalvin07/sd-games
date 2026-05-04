@@ -1,16 +1,10 @@
-import { MAX_HINT_LEN, MAX_PLAYER_NAME, ROOM_CODE_ALPHABET, ROOM_CODE_LEN } from './constants';
+import { MAX_PLAYER_NAME, ROOM_CODE_ALPHABET, ROOM_CODE_LEN } from './constants';
 
 const NAME_REGEX = /^[a-zA-Z0-9 ]+$/;
-const HINT_REGEX = /^[a-zA-Z0-9 ]+$/;
 
 export function isValidPlayerName(name: string): boolean {
   const trimmed = name.trim();
   return trimmed.length >= 1 && trimmed.length <= MAX_PLAYER_NAME && NAME_REGEX.test(trimmed);
-}
-
-export function isValidHint(hint: string): boolean {
-  const trimmed = hint.trim();
-  return trimmed.length >= 1 && trimmed.length <= MAX_HINT_LEN && HINT_REGEX.test(trimmed);
 }
 
 export function normalizeRoomCode(code: string): string {

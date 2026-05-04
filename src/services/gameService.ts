@@ -1,19 +1,54 @@
 import { supabase } from './supabase';
 import { generateRoomCode, normalizeRoomCode } from '@/utils/validation';
+import {
+  DEFAULT_HINT_TIMER,
+  DEFAULT_MAX_PLAYERS,
+  DEFAULT_VOTE_TIMER,
+  MAX_HINT_TIMER,
+  MAX_PLAYERS,
+  MAX_VOTE_TIMER,
+  MIN_HINT_TIMER,
+  MIN_PLAYERS,
+  MIN_VOTE_TIMER,
+} from '@/utils/constants';
 import type {
   ActionPayload,
   ActionResult,
   LeaderboardEntry,
   Room,
   RoomPlayer,
+  RoomSettings,
 } from '@/types/game';
 
 const MAX_CODE_RETRIES = 5;
 
+function clamp(n: number, lo: number, hi: number): number {
+  if (Number.isNaN(n)) return lo;
+  return Math.min(hi, Math.max(lo, Math.floor(n)));
+}
+
+function normalizeSettings(s: Partial<RoomSettings> | undefined): RoomSettings {
+  return {
+    maxPlayers: clamp(s?.maxPlayers ?? DEFAULT_MAX_PLAYERS, MIN_PLAYERS, MAX_PLAYERS),
+    hintTimerSeconds: clamp(
+      s?.hintTimerSeconds ?? DEFAULT_HINT_TIMER,
+      MIN_HINT_TIMER,
+      MAX_HINT_TIMER,
+    ),
+    voteTimerSeconds: clamp(
+      s?.voteTimerSeconds ?? DEFAULT_VOTE_TIMER,
+      MIN_VOTE_TIMER,
+      MAX_VOTE_TIMER,
+    ),
+  };
+}
+
 export async function createRoom(
   hostName: string,
+  settings?: Partial<RoomSettings>,
 ): Promise<{ room: Room; player: RoomPlayer }> {
   const playerId = crypto.randomUUID();
+  const cfg = normalizeSettings(settings);
 
   let lastErr: unknown = null;
   for (let attempt = 0; attempt < MAX_CODE_RETRIES; attempt++) {
@@ -27,12 +62,14 @@ export async function createRoom(
         host_player_id: playerId,
         game_state: {},
         version: 0,
+        max_players: cfg.maxPlayers,
+        hint_timer_seconds: cfg.hintTimerSeconds,
+        vote_timer_seconds: cfg.voteTimerSeconds,
       })
       .select('*')
       .single();
 
     if (error) {
-      // 23505 = unique violation on `code`; retry with a new code.
       if ((error as { code?: string }).code === '23505') {
         lastErr = error;
         continue;
@@ -80,6 +117,15 @@ export async function joinRoom(
   if (rErr || !room) throw new Error('Room not found');
   if ((room as Room).status !== 'waiting') {
     throw new Error('Game already in progress');
+  }
+
+  const { count, error: cErr } = await supabase
+    .from('room_players')
+    .select('*', { count: 'exact', head: true })
+    .eq('room_id', (room as Room).id);
+  if (cErr) throw cErr;
+  if ((count ?? 0) >= (room as Room).max_players) {
+    throw new Error('Room is full');
   }
 
   const playerId = crypto.randomUUID();
