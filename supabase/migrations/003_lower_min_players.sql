@@ -1,3 +1,6 @@
+-- Lower minimum player count for START_GAME from 5 to 3.
+-- plpgsql functions cannot be patched in place; redefine the whole body.
+
 CREATE OR REPLACE FUNCTION handle_action(
   p_room_id UUID,
   p_player_id UUID,
@@ -11,25 +14,21 @@ DECLARE
   v_action_type TEXT;
   v_payload JSONB;
   v_new_state JSONB;
-  v_error TEXT;
   v_player_count INT;
 BEGIN
-  -- Lock room for atomic update
   SELECT * INTO v_room FROM rooms WHERE id = p_room_id FOR UPDATE;
-  
+
   IF v_room IS NULL THEN
     RETURN jsonb_build_object('error', 'Room not found');
   END IF;
 
-  -- Validate version (optimistic locking)
   IF v_room.version != p_expected_version THEN
     RETURN jsonb_build_object('error', 'Stale version');
   END IF;
 
-  -- Get player
-  SELECT * INTO v_player FROM room_players 
+  SELECT * INTO v_player FROM room_players
   WHERE room_id = p_room_id AND id = p_player_id;
-  
+
   IF v_player IS NULL THEN
     RETURN jsonb_build_object('error', 'Player not found in room');
   END IF;
@@ -39,30 +38,27 @@ BEGIN
 
   -- ============ START_GAME ============
   IF v_action_type = 'START_GAME' THEN
-    -- Validate: player is host, at least 5 players, status is waiting
     IF NOT v_player.is_host THEN
       RETURN jsonb_build_object('error', 'Only host can start game');
     END IF;
 
     SELECT COUNT(*) INTO v_player_count FROM room_players WHERE room_id = p_room_id;
-    
-    IF v_player_count < 5 THEN
-      RETURN jsonb_build_object('error', 'Need at least 5 players');
+
+    IF v_player_count < 3 THEN
+      RETURN jsonb_build_object('error', 'Need at least 3 players');
     END IF;
 
     IF v_room.status != 'waiting' THEN
       RETURN jsonb_build_object('error', 'Game already started');
     END IF;
 
-    -- Assign random order to players
-    UPDATE room_players 
+    UPDATE room_players
     SET order_index = (
       SELECT row_number() OVER (ORDER BY RANDOM()) - 1
       FROM room_players rp2 WHERE rp2.id = room_players.id
     )
     WHERE room_id = p_room_id;
 
-    -- Initialize game state with role assignment
     v_new_state := jsonb_build_object(
       'round', 1,
       'category', 'Animal',
@@ -71,12 +67,12 @@ BEGIN
           jsonb_build_object(
             'id', rp.id::TEXT,
             'name', rp.name,
-            'role', CASE 
+            'role', CASE
               WHEN ROW_NUMBER() OVER (ORDER BY rp.order_index) = 1 THEN 'mr_white'
               ELSE 'civilian'
             END,
             'alive', TRUE,
-            'word', CASE 
+            'word', CASE
               WHEN ROW_NUMBER() OVER (ORDER BY rp.order_index) = 1 THEN NULL
               ELSE 'elephant'
             END
@@ -88,14 +84,13 @@ BEGIN
       'votes', '[]'::jsonb
     );
 
-    -- Get first player for turn
     UPDATE rooms SET
       status = 'playing',
       phase = 'hinting',
       game_state = v_new_state,
       current_turn_player_id = (
-        SELECT id FROM room_players 
-        WHERE room_id = p_room_id 
+        SELECT id FROM room_players
+        WHERE room_id = p_room_id
         ORDER BY order_index LIMIT 1
       ),
       version = version + 1
@@ -105,7 +100,6 @@ BEGIN
 
   -- ============ SUBMIT_HINT ============
   ELSIF v_action_type = 'SUBMIT_HINT' THEN
-    -- Validate: it's player's turn, phase is hinting, player is alive
     IF v_room.current_turn_player_id != p_player_id THEN
       RETURN jsonb_build_object('error', 'Not your turn');
     END IF;
@@ -118,9 +112,8 @@ BEGIN
       RETURN jsonb_build_object('error', 'Player is not alive');
     END IF;
 
-    -- Add hint to game state
     v_new_state := v_room.game_state || jsonb_build_object(
-      'hints', COALESCE(v_room.game_state->'hints', '[]'::jsonb) || 
+      'hints', COALESCE(v_room.game_state->'hints', '[]'::jsonb) ||
         jsonb_build_array(jsonb_build_object(
           'player_id', p_player_id::TEXT,
           'player_name', v_player.name,
@@ -129,11 +122,10 @@ BEGIN
         ))
     );
 
-    -- Move to next player (simplified: just cycle)
     UPDATE rooms SET
       game_state = v_new_state,
       current_turn_player_id = (
-        SELECT id FROM room_players 
+        SELECT id FROM room_players
         WHERE room_id = p_room_id AND order_index = (
           (SELECT order_index FROM room_players WHERE id = p_player_id) + 1
         ) % (SELECT COUNT(*) FROM room_players WHERE room_id = p_room_id)
@@ -153,7 +145,6 @@ BEGIN
       RETURN jsonb_build_object('error', 'Dead players cannot vote');
     END IF;
 
-    -- Record vote
     v_new_state := v_room.game_state || jsonb_build_object(
       'votes', COALESCE(v_room.game_state->'votes', '[]'::jsonb) ||
         jsonb_build_array(jsonb_build_object(
