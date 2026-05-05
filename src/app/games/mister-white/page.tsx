@@ -1,6 +1,4 @@
-'use client';
-
-import { GameCoordinator } from '@/components/mister-white/GameCoordinator';
+import GameCoordinator from './components/GameCoordinator';
 
 export default function MisterWhitePage() {
   return <GameCoordinator />;
