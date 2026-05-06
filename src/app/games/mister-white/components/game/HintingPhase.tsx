@@ -12,6 +12,7 @@ interface Props {
 }
 
 export default function HintingPhase({ room, players, localSession }: Props) {
+  void players;
   const [hintInput, setHintInput] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -67,7 +68,6 @@ export default function HintingPhase({ room, players, localSession }: Props) {
     room.version,
   ]);
 
-  // Reset input when turn changes off this player
   useEffect(() => {
     if (!isMyTurn) setHintInput('');
   }, [isMyTurn]);
@@ -90,7 +90,6 @@ export default function HintingPhase({ room, players, localSession }: Props) {
     }
   }
 
-  // Order alive players by order_index
   const orderedPlayers = [...gamePlayers]
     .filter((p) => p.alive)
     .sort((a, b) => a.order_index - b.order_index);
@@ -99,8 +98,9 @@ export default function HintingPhase({ room, players, localSession }: Props) {
   const previousRoundHints = hints.filter((h) => h.round < currentHintRound);
 
   return (
-    <main className="min-h-screen w-full flex flex-col px-5 py-5 max-w-md mx-auto">
-      <header className="mb-4">
+    <main className="h-[100dvh] w-full flex flex-col overflow-hidden max-w-md mx-auto">
+      {/* Header — fixed height */}
+      <header className="shrink-0 px-5 pt-5 pb-3 border-b border-neutral-900">
         <div className="flex items-center justify-between text-xs text-neutral-500">
           <span>Round {eliminationRound}</span>
           <span>
@@ -120,7 +120,8 @@ export default function HintingPhase({ room, players, localSession }: Props) {
         </div>
       </header>
 
-      <section className="flex-1 overflow-y-auto">
+      {/* Scrollable middle — takes remaining space */}
+      <section className="flex-1 min-h-0 overflow-y-auto px-5 py-3">
         <ul className="space-y-2">
           {orderedPlayers.map((p) => {
             const myHint = currentRoundHints.find((h) => h.player_id === p.id);
@@ -181,10 +182,11 @@ export default function HintingPhase({ room, players, localSession }: Props) {
         )}
       </section>
 
-      <footer className="pt-4 border-t border-neutral-900 mt-4">
+      {/* Footer — pinned to bottom, always visible */}
+      <footer className="shrink-0 px-5 pt-3 pb-5 border-t border-neutral-900 bg-neutral-950">
         {isMyTurn ? (
           <div>
-            <p className="text-center text-xs uppercase tracking-widest text-red-400 mb-3">
+            <p className="text-center text-xs uppercase tracking-widest text-red-400 mb-2">
               It&apos;s your turn
             </p>
             {myPlayer?.role === 'civilian' && (
@@ -215,7 +217,7 @@ export default function HintingPhase({ room, players, localSession }: Props) {
             {error && <p className="text-red-500 text-xs mt-2">{error}</p>}
           </div>
         ) : (
-          <p className="text-center text-sm text-neutral-400">
+          <p className="text-center text-sm text-neutral-400 py-2">
             {currentTurnPlayer ? `${currentTurnPlayer.name}'s turn...` : 'Waiting...'}
           </p>
         )}
