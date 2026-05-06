@@ -57,6 +57,16 @@ export async function updateRoomSettings(
   if (error) throw new Error(error.message);
 }
 
+export async function getRoomById(roomId: string) {
+  const { data, error } = await supabase
+    .from('rooms')
+    .select('*')
+    .eq('id', roomId)
+    .single();
+  if (error) throw new Error(error.message);
+  return data;
+}
+
 export async function getRoomPlayers(roomId: string): Promise<RoomPlayer[]> {
   const { data, error } = await supabase
     .from('room_players')
@@ -69,6 +79,14 @@ export async function getRoomPlayers(roomId: string): Promise<RoomPlayer[]> {
 
 export async function playAgain(roomId: string, playerId: string): Promise<void> {
   const { error } = await supabase.rpc('play_again', {
+    p_room_id: roomId,
+    p_player_id: playerId,
+  });
+  if (error) throw new Error(error.message);
+}
+
+export async function finishReconfigure(roomId: string, playerId: string): Promise<void> {
+  const { error } = await supabase.rpc('finish_reconfigure', {
     p_room_id: roomId,
     p_player_id: playerId,
   });

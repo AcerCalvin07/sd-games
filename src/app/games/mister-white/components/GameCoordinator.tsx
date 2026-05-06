@@ -31,6 +31,7 @@ export default function GameCoordinator() {
   const [players, setPlayers] = useState<RoomPlayer[]>([]);
   const [localSession, setLocalSession] = useState<LocalSession | null>(null);
   const [isAlive, setIsAlive] = useState(true);
+  const [pendingName, setPendingName] = useState('');
 
   useEffect(() => {
     const session = loadSession();
@@ -148,14 +149,35 @@ export default function GameCoordinator() {
 
     case 'entry':
       return (
-        <EntryScreen onHost={() => setScreen('host_setup')} onJoin={() => setScreen('join')} />
+        <EntryScreen
+          onHost={(name) => {
+            setPendingName(name);
+            setScreen('host_setup');
+          }}
+          onJoin={(name) => {
+            setPendingName(name);
+            setScreen('join');
+          }}
+        />
       );
 
     case 'host_setup':
-      return <HostSetupScreen onBack={() => setScreen('entry')} onCreated={handleSessionCreated} />;
+      return (
+        <HostSetupScreen
+          initialName={pendingName}
+          onBack={() => setScreen('entry')}
+          onCreated={handleSessionCreated}
+        />
+      );
 
     case 'join':
-      return <JoinScreen onBack={() => setScreen('entry')} onJoined={handleSessionCreated} />;
+      return (
+        <JoinScreen
+          initialName={pendingName}
+          onBack={() => setScreen('entry')}
+          onJoined={handleSessionCreated}
+        />
+      );
 
     case 'lobby':
       return room && localSession ? (

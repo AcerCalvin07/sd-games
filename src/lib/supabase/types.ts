@@ -41,7 +41,7 @@ export type HintEntry = {
 
 export type VoteEntry = {
   voter_id: string;
-  target_id: string | null;
+  target_id: string | null
   voted_at: number;
 };
 
@@ -167,6 +167,10 @@ export type Database = {
         Returns: { success: boolean; phase?: GamePhase; winner?: string };
       };
       play_again: {
+        Args: { p_room_id: string; p_player_id: string };
+        Returns: { success: boolean; status: RoomStatus };
+      };
+      finish_reconfigure: {
         Args: { p_room_id: string; p_player_id: string };
         Returns: { success: boolean; status: RoomStatus };
       };
