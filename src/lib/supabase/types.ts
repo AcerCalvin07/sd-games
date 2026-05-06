@@ -183,10 +183,16 @@ export type Database = {
         Returns: {
           room_id: string;
           player_id: string;
+          code: string;
           status: RoomStatus;
           phase: GamePhase;
+          host_player_id: string;
+          current_turn_player_id: string | null;
           game_state: GameState;
           settings: RoomSettings;
+          version: number;
+          created_at: string;
+          updated_at: string;
           is_host: boolean;
           is_alive: boolean;
         };
