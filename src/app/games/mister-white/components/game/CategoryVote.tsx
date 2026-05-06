@@ -15,9 +15,12 @@ const CATEGORY_VOTE_DURATION = 10;
 export default function CategoryVote({ room, localSession }: Props) {
   const [busyCategory, setBusyCategory] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-
-  const options: string[] = room.game_state.category_options ?? [];
-  const votes = room.game_state.category_votes ?? [];
+  const options: string[] = Array.isArray(room.game_state.category_options)
+    ? room.game_state.category_options
+    : [];
+  const votes = Array.isArray(room.game_state.category_votes)
+    ? room.game_state.category_votes
+    : [];
   const myVote = votes.find((v) => v.player_id === localSession.player_id)?.category ?? null;
   const totalPlayers = room.game_state.players?.length ?? 0;
   const voteCount = votes.length;
